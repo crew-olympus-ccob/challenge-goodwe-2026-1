@@ -1,2 +1,245 @@
-# challenge-goodwe-2026-1
-Repositório destinado ao Challenge da GoodWe do 1ºSemestre de 2026
+# EV ChargeOps: Plataforma de Gestão de Recarga em Infraestrutura Compartilhada
+
+## Equipe Crew Olympus
+
+| Nome | RM |
+|------|-----|
+| Gabriel Tavares Martins de Oliveira | RM573718 |
+| Lucas Araujo de Carvalho | RM571060 |
+| Matheus Henrique Pedrozo Traiba | RM571817 |
+| Miguel Monteiro Moreira | RM572904 |
+| Pedro Henrique de Lima Costa | RM573008 |
+
+---
+
+# Sobre o Projeto
+
+O EV ChargeOps é o produto proposto no **Challenge 2026 da FIAP em parceria com a GoodWe**. O objetivo é criar uma plataforma que transforma sessões de recarga de veículos elétricos em infraestrutura compartilhada (condomínios, edifícios corporativos, etc) em dados estruturados, faturamento individual por usuário e inteligência operacional.
+
+O problema que motivou o projeto é prático: quando vários moradores ou colaboradores usam o mesmo carregador, não há como saber quem consumiu o quê. O custo da energia vai para a conta coletiva e é dividido entre todos, independente do uso. A proposta é construir a plataforma sobre o carregador **GoodWe HCA G2**, lendo os dados de cada sessão via Modbus TCP, identificando o usuário pelo cartão RFID e calculando o valor a cobrar com base na energia efetivamente consumida.
+
+---
+
+# Frente 1: Contexto e Problema
+
+Aprofundamentos escolhidos: A (análise de mercado) e C (dados públicos de EV no Brasil)
+
+## Crescimento dos veículos elétricos no Brasil
+
+Os números da ABVE mostram que a adoção de veículos elétricos no Brasil cresceu de forma consistente nos últimos anos e acelerou em 2025 e 2026:
+
+- Frota eletrificada acumulada entre 2012 e janeiro de 2026: **645.407 veículos**
+- Vendas em 2025: **223.912 unidades** (26% de crescimento frente a 2024)
+- Emplacamentos em janeiro e fevereiro de 2026: **48.591 unidades**, 90% a mais que no mesmo período do ano anterior
+- Pontos públicos e semipúblicos de recarga em maio de 2026: **25.429**, crescimento de 20,7% em três meses
+- São Paulo lidera com 181.305 EVs, seguido por DF (48.502) e Rio de Janeiro (39.295)
+
+Desse total de pontos instalados, 66% ainda são carregadores lentos AC e 34% são rápidos DC. Isso reforça que a recarga em casa e em condomínios, feita em corrente alternada, é e vai continuar sendo a forma mais comum de abastecer um veículo elétrico no Brasil.
+
+## O problema nos condomínios e edifícios
+
+Quando um ponto de recarga é instalado em área comum, surgem quatro problemas que precisam ser resolvidos para que a operação seja viável:
+
+**Medição individual:** sem um medidor dedicado por sessão, o consumo vai para a conta coletiva do edifício e é rateado entre todos os condôminos, mesmo os que não têm veículo elétrico.
+
+**Controle de acesso:** sem autenticação, qualquer pessoa com acesso ao local pode usar o carregador, sem nenhuma rastreabilidade.
+
+**Gestão de carga:** com vários carregadores ligados ao mesmo tempo, o consumo agregado pode ultrapassar a demanda contratada do edifício, gerando multas ou quedas de energia.
+
+**Exigência legal:** São Paulo aprovou a **Lei 18.403/2026**, que garante ao condômino o direito de instalar ponto de recarga na própria vaga e exige que o consumo seja medido individualmente para fins de cobrança. Ou seja, o condomínio precisa de um sistema assim para estar em conformidade com a lei.
+
+## Análise de mercado: o que já existe
+
+Pesquisamos as principais soluções disponíveis para entender o que o mercado oferece e onde estão as lacunas, especialmente para o contexto brasileiro.
+
+**Wallbox Pulsar Plus (Espanha):** carregador AC de 7,4 a 22 kW com balanceamento dinâmico de carga entre múltiplos pontos (Power Sharing), integração com energia solar e suporte ao protocolo OCPP. Não tem homologação ANATEL, o que complica a regularização no Brasil.
+
+**Zaptec Go (Noruega):** 22 kW, com algoritmo de distribuição de carga entre dezenas de carregadores simultâneos e integração com sistemas de automação predial. Também sem homologação para o Brasil.
+
+**ChargePoint (EUA):** plataforma SaaS consolidada para gestão corporativa de frotas, com autenticação por RFID ou app e relatórios detalhados. Não tem hardware distribuído no Brasil.
+
+**Neocharge (Brasil):** é o principal concorrente nacional, com wallboxes de 3,7 a 22 kW e plataforma de gestão própria. Tem suporte técnico local, mas não tem integração nativa com sistemas fotovoltaicos e não expõe protocolo Modbus para integrações externas.
+
+**GoodWe HCA G2 + EV ChargeOps:** é a única combinação com homologação ANATEL (nº 06795-24-02673), integração direta com inversores fotovoltaicos GoodWe via RS485, controle dinâmico de carga e protocolo Modbus TCP aberto para que a plataforma acesse os dados de sessão.
+
+| Critério | Wallbox | Zaptec | ChargePoint | Neocharge | GoodWe HCA G2 + EV ChargeOps |
+|---|---|---|---|---|---|
+| Homologação Brasil | Não | Não | Não | Sim | Sim |
+| Integração fotovoltaica | Sim | Sim | Não | Parcial | Sim |
+| Faturamento individual | Sim | Sim | Sim | Sim | Sim |
+| Protocolo aberto (Modbus/OCPP) | Sim | Parcial | Sim | Não | Sim |
+| Gestão dinâmica de carga | Sim | Sim | Sim | Não | Sim |
+| Ecossistema solar GoodWe | Não | Não | Não | Não | Sim |
+
+---
+
+# Frente 2: Base Regulatória e Técnica
+
+Aprofundamentos escolhidos: B (documentação da API SEMS da GoodWe) e C (APIs complementares: Open Charge Map e Google Places)
+
+## ANEEL Resolução Normativa 1.000/2021
+
+A RN 1.000/2021 consolidou os direitos e deveres dos consumidores de energia elétrica no Brasil e incorporou as regras da Resolução 819/2018 sobre recarga de veículos elétricos. Para o EV ChargeOps, os pontos mais relevantes são:
+
+- Qualquer pessoa jurídica pode vender energia para recarga de veículos elétricos sem precisar de autorização específica da ANEEL.
+- O preço cobrado ao usuário final não é tabelado: é negociado livremente pelo operador do ponto de recarga.
+- As tarifas e condições precisam ser transparentes e visíveis para o consumidor antes de iniciar a sessão.
+- A instalação deve seguir as normas ABNT NBR 5410 e NBR 16722.
+- Para que o faturamento tenha validade legal e rastreabilidade metrológica, é recomendado o uso de medidor com certificação MID (Measuring Instruments Directive).
+
+Na prática, isso significa que o EV ChargeOps pode operar a cobrança por consumo em condomínios sem burocracia adicional, desde que use um medidor MID e deixe as tarifas visíveis. O HCA G2 já suporta o medidor MID via RS485, o que atende esse requisito.
+
+## GoodWe HCA G2: o hardware da solução
+
+O HCA G2 é o carregador AC da GoodWe para uso residencial e compartilhado. Está disponível em três modelos:
+
+| Modelo | Potência | Fases |
+|---|---|---|
+| GW7K-HCA-20 | 7 kW | Monofásico |
+| GW11K-HCA-20 | 11 kW | Trifásico |
+| GW22K-HCA-20 | 22 kW | Trifásico |
+
+Tensão de operação: 220 V (monofásico) e 380 V (trifásico), padrão brasileiro. Proteção IP66 no carregador e IP55 no plugue. Conector Tipo 2 (IEC 62196-2).
+
+**Interfaces de comunicação:**
+
+| Interface | Uso | Alcance |
+|---|---|---|
+| RS485_A1/B1 | Comunicação com inversor fotovoltaico GoodWe | 100 m |
+| RS485_A2/B2 | Comunicação com medidor MID | 100 m |
+| LAN (RJ45) | Conexão com roteador e SEMS+ | 100 m |
+| Wi-Fi (2,4 GHz) | Conexão sem fio com roteador | ~15 m |
+| Bluetooth | Configuração local via app SolarGo | ~10 m |
+| RFID (13,56 MHz) | Autenticação por cartão (ISO 14443A/B) | Leitura por contato |
+
+**Modos de carregamento disponíveis:** Rápido, Prioridade FV, FV + Bateria, Agendado e Controle Dinâmico de Carga. O Controle Dinâmico ajusta a potência de carregamento com base na corrente disponível no quadro do edifício, evitando ultrapassagem de demanda.
+
+**Formas de iniciar uma sessão:** cartão RFID (suporta até 10 cartões por carregador), app SEMS+ ou SolarGo, ou início automático ao conectar o veículo (sem autenticação).
+
+**Estados possíveis do carregador (registrador Modbus 10017):**
+
+| Código | Estado |
+|---|---|
+| 0 | Ocioso, sem plugue |
+| 1 | Ocioso, plugue conectado |
+| 2 | Handshaking com o veículo |
+| 3 | Carregando |
+| 4 | Sessão concluída |
+| 5 | Alarme |
+| 6 | Pré-agendado |
+| 7 | Manutenção |
+| 8 | Falha ao iniciar |
+| 9 | Atualizando firmware |
+| 10 | Interrompido |
+
+## Integração via Modbus TCP
+
+A comunicação entre a plataforma e o carregador é feita pelo protocolo Modbus TCP na rede local (protocolo RS485: 9600 bps, 8N1). Os registradores mais importantes para o EV ChargeOps:
+
+**Monitoramento da sessão em andamento:**
+
+| Registrador | Descrição | Unidade |
+|---|---|---|
+| 10009 a 10011 | Tensão por fase (A, B, C) | V (ganho 10) |
+| 10012 a 10014 | Corrente por fase (A, B, C) | A (ganho 10) |
+| 10015 | Potência de carregamento | kW (ganho 10) |
+| 10016 | Energia acumulada nesta sessão | kWh (ganho 10) |
+| 10017 | Status do carregador | 0 a 10 |
+| 10063 | Duração da sessão em andamento | segundos |
+| 10075 | Status da conexão do veículo | 0/1/2 |
+| 10076 | Modo de início da sessão | 0 a 7 |
+
+**Histórico e faturamento:**
+
+| Registrador | Descrição | Unidade |
+|---|---|---|
+| 10065 | Energia histórica acumulada | kWh |
+| 10103 | Energia de origem fotovoltaica | kWh |
+| 10105 | Energia comprada da rede | kWh |
+| 10158 a 10160 | Horário de início da sessão | ano/mês, dia/hora, min/seg |
+| 10162 a 10164 | Horário de fim da sessão | ano/mês, dia/hora, min/seg |
+| 10170 | Leitura do medidor MID antes da sessão | kWh (ganho 100) |
+| 10172 | Leitura do medidor MID após a sessão | kWh (ganho 100) |
+
+**Controle remoto:**
+
+| Registrador | Descrição |
+|---|---|
+| 10060 | Liga/desliga recarga (1=desliga, 2=liga) |
+| 10019 | Plug & Charge (0=desativado, 1=ativado) |
+| 10500 a 10521 | Gerenciamento de cartões RFID |
+ 
+## Integração com o SEMS+
+ 
+O SEMS+ é a plataforma de nuvem da GoodWe onde ficam os dados dos inversores e dos carregadores. A integração com a plataforma utilizará os acessos e a documentação de API fornecidos pela equipe da GoodWe em conjunto com os professores da FIAP ao longo do projeto.
+
+## APIs complementares
+
+**OCPP (Open Charge Point Protocol)**
+
+É o protocolo padrão de comunicação entre carregadores e sistemas de gestão. O OCPP 1.6 cobre autenticação, controle de sessão e relatórios; o 2.0.1 adiciona smart charging e segurança TLS. É o protocolo mais adotado no mercado e será avaliado como camada de integração do EV ChargeOps com sistemas de gestão externos.
+
+**OCPI (Open Charge Point Interface v2.2.1)**
+
+Define como diferentes operadores de rede trocam informações entre si: disponibilidade de pontos, autorização de sessões entre redes e registros de sessão (CDR) para faturamento cruzado. Relevante para cenários onde o condomínio queira abrir o ponto de recarga para visitantes de outras redes.
+
+**Open Charge Map API**
+
+Base de dados comunitária com mais de 55.000 pontos de recarga no mundo. Usada para enriquecer o mapa de pontos disponíveis na região e identificar oportunidades de expansão.
+```
+GET https://api.openchargemap.io/v3/poi/?output=json&countrycode=BR&maxresults=100
+```
+
+**Google Places API (evChargeOptions)**
+
+Retorna informações sobre carregadores cadastrados em estabelecimentos no Google Maps: número de conectores, tipos e potência máxima disponível.
+```
+GET https://places.googleapis.com/v1/places/{place_id}
+Headers: { "X-Goog-FieldMask": "evChargeOptions" }
+```
+
+---
+
+# Frente 3: Arquitetura e Inteligência
+
+Aprofundamentos escolhidos: a definir
+
+---
+
+# Diagrama de Arquitetura
+
+
+---
+
+# Modelo de Rateio
+
+
+---
+
+# Papel da IA na Solução
+
+
+---
+
+# Plano para a Sprint 02
+
+
+---
+
+# Fontes Consultadas
+ 
+- ABVE. Frota de eletrificados no Brasil se aproxima dos 650 mil veículos. Disponível em: https://smabc.org.br/frota-de-eletrificados-no-brasil-se-aproxima-dos-650-mil-veiculos/
+- ABVE. Infraestrutura de recarga avança e já está em 25% dos municípios brasileiros. Disponível em: https://abve.org.br/infraestrutura-de-recarga-avanca-e-ja-esta-em-25-dos-municipios-brasileiros/
+- O Tempo. Brasil alcança 25 mil pontos de recarga para carros elétricos. Disponível em: https://www.otempo.com.br/autotempo/2026/6/17/brasil-chega-a-25-mil-pontos-de-recarga-para-carros-eletricos
+- ANEEL. Resolução Normativa nº 1.000, de 07/12/2021. Disponível em: https://www2.aneel.gov.br/cedoc/ren20211000.html
+- ANEEL. Veículos Elétricos. Disponível em: https://www.gov.br/aneel/pt-br/assuntos/veiculos-eletricos
+- VoltBras. Legislação Brasileira sobre eletropostos. Disponível em: https://voltbras.com/normas-tecnicas-e-legislacao/legislacao-brasileira-sobre-eletropostos-o-que-saber-antes-de-investir/
+- GoodWe. GW_HCA-G2 Datasheet (PT). Documento técnico oficial, 2024.
+- GoodWe. GW_HCA-G2 Manual do Usuário (PT). Documento técnico oficial, 2024.
+- GoodWe. Mapa MODBUS HCA G2. Documento técnico oficial, 2024.
+- GoodWe. SEMS+ Portal. Disponível em: https://semsplus.goodwe.com
+- NeoCharge. Carregador para carro elétrico em prédios e condomínios. Disponível em: https://www.neocharge.com.br/tudo-sobre/carregador-carro-eletrico-predio-condominio-instalacao
+- Open Charge Alliance. Open Charge Point Protocol (OCPP). Disponível em: https://openchargealliance.org/protocols/open-charge-point-protocol/
+- Virta Global. OCPI protocol explained. Disponível em: https://www.virta.global/blog/ocpi-protocol-explained-the-backbone-of-ev-charging-interoperability
+- Open Charge Map. API Documentation. Disponível em: https://api.openchargemap.io/v3
+- Google. Places API, evChargeOptions field. Disponível em: https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places
