@@ -202,29 +202,68 @@ Headers: { "X-Goog-FieldMask": "evChargeOptions" }
 
 # Frente 3: Arquitetura e Inteligência
 
-Aprofundamentos escolhidos: a definir
+### Diagrama de Arquitetura
+
+O EV ChargeOps adota uma estrutura em camadas bem definidas, garantindo o desacoplamento de responsabilidades desde o hardware em campo até as interfaces de ponta, permitindo manutenção simplificada e robustez no processamento de sessões.
+
+<img width="1172" height="779" alt="image" src="https://github.com/user-attachments/assets/c2c4c7be-ff59-45a2-9e03-d901ef2ead6d" />
+
+### Estrutura e Camadas do Sistema
+
+* **Camada Física (Edge Device):** Centrada no carregador **GoodWe HCA G2**, responsável pela medição de energia (kWh), controle de início/fim de sessão, leitura do status de recarga e autenticação local via cartões RFID.
+* **Camada de Comunicação:** Transmissão dos dados do carregador para o ecossistema backend utilizando o protocolo **Modbus TCP** estruturado sobre a infraestrutura de rede local (Wi-Fi ou LAN/Ethernet).
+* **Camada de Backend (Core System):** O coração da plataforma, operando como o orquestrador que consome as transmissões Modbus. É responsável pelo recebimento de sessões de recarga, identificação de usuários por RFID, processamento do consumo energético, aplicação das regras do motor de rateio, integração direta com os modelos de IA e exposição de APIs REST para o frontend.
+* **Banco de Dados:** Centralizado em tecnologia relacional **PostgreSQL**, garantindo consistência ácida (ACID) e integridade referencial para as entidades fundamentais do sistema: *Usuários, Veículos, Carregadores, Sessões de recarga e Faturas*.
+* **Camada de Frontend:** Interfaces segregadas por perfil de acesso:
+  * **Usuário:** Aplicativo/Portal focado em histórico de recargas, consumo mensal detalhado e visualização transparente de faturas.
+  * **Administrador:** Dashboard de gestão contendo visão geral do sistema, monitoramento em tempo real das sessões ativas, relatórios de consumo total do condomínio e central de alertas emitidos pela IA.
+* **Integrações Externas (Secundárias):** Sincronização via **SEMS+ API (GoodWe)** para consolidação de dados de nuvem do fabricante e **Open Charge Map** para contextualização geográfica opcional.
 
 ---
 
-# Diagrama de Arquitetura
+### Modelo de Rateio (Motor de Rateio)
 
+O motor de rateio é o módulo responsável pelo cálculo de cobrança individualizada, estruturado para incentivar o uso eficiente da infraestrutura compartilhada e mitigar conflitos em vagas comuns (como o bloqueio de carregadores por veículos já carregados).
+
+O cálculo do custo total da sessão ($C_{total}$) baseia-se na seguinte formulação:
+
+$$C_{total} = (E_{consumida} \times T_{energetica}) + C_{ociosidade}$$
+
+Onde:
+* **$E_{consumida}$:** Energia efetivamente consumida na sessão (em kWh), extraída dos registradores do HCA G2.
+* **$T_{energetica}$:** Tarifa de energia aplicada (R$/kWh), configurada conforme a concessionária local ou acordos do condomínio.
+* **$C_{ociosidade}$:** Taxa adicional aplicada caso o veículo permaneça conectado à vaga após atingir 100% da carga. É calculada pelo tempo de ociosidade ($t_{ocioso}$) multiplicado por uma taxa de penalidade horária ($T_{ociosa}$):
+
+$$C_{ociosidade} = t_{ocioso} \times T_{ociosa}$$
+
+---
+
+### Papel da IA na Solução
+
+A inteligência do sistema opera na camada analítica por meio de dois componentes focados em otimização operacional e segurança:
+
+* **IA 1 — Previsão de Pico de Demanda:** Utilizando técnicas de regressão linear ou análise de média temporal móvel, este modelo estuda o histórico de sessões do condomínio para prever os horários de maior criticidade no consumo elétrico. O resultado subsidia diretamente o gerenciamento de carga, sugerindo ou automatizando o controle para evitar sobrecargas no quadro geral.
+* **IA 2 — Detecção de Anomalias:** Baseada em regras heurísticas de consumo ou algoritmos de isolamento (*Isolation Forest*), atua na varredura de comportamento para identificar padrões de consumo irregular (desvios abruptos de corrente/tensão), detectar falhas mecânicas/elétricas do hardware, mitigar uso indevido (fraudes de autenticação) e sinalizar veículos ociosos travando a vaga.
 
 ---
 
-# Modelo de Rateio
+### Plano para a Sprint 02
 
-
----
-
-# Papel da IA na Solução
-
-
----
-
-# Plano para a Sprint 02
-
+* **Hardware & Comunicação:** Estruturação do ambiente de testes Modbus TCP para leitura simulada dos registradores do GoodWe HCA G2.
+* **Backend & Banco de Dados:** Modelagem física e criação do schema do banco PostgreSQL contendo as tabelas do Core System. Desenvolvimento dos endpoints REST iniciais para ingestão de sessões.
+* **Inteligência Artificial:** Desenvolvimento do protótipo da IA 1 (Média Temporal) em Python para modelagem preditiva de carga baseada em dados históricos sintéticos.
+* **Frontend:** Criação das telas iniciais do fluxo do usuário (histórico e faturas) utilizando o framework escolhido para a interface.
 
 ---
+
+### Links do Projeto
+
+Utilize os acessos abaixo para visualizar as especificações técnicas, designs e o gerenciamento do projeto:
+
+* **Diagrama da Arquitetura:** https://excalidraw.com/#json=hAJkKcG6Jo_vsugTp-sp8,aXthfg0HEz-wcBrLT4KSFw
+* **Documentação da Arquitetura:** https://docs.google.com/document/d/1XkIU3JqrH9_mNOLK5a058u5zLWTZaQYw4Zvs8c6QDMQ/edit?usp=sharing
+* **Quadro de Tarefas (Gerenciamento):** https://app.notion.com/p/Quadro-T-cnico-Sistema-de-Recarga-GoodWe-10a027a3111743848737baff63a2f214?source=copy_link
+* **Protótipo de Interface (Figma):** https://www.figma.com/make/B0gsqv8mz5QLgzeufeLwgn/EV-Charging-Management-Dashboard?t=qHdKOFcLpgRUOViv-20&fullscreen=1
 
 # Fontes Consultadas
  
