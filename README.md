@@ -48,6 +48,46 @@ Quando um ponto de recarga é instalado em área comum, surgem quatro problemas 
 
 **Exigência legal:** São Paulo aprovou a **Lei 18.403/2026**, que garante ao condômino o direito de instalar ponto de recarga na própria vaga e exige que o consumo seja medido individualmente para fins de cobrança. Ou seja, o condomínio precisa de um sistema assim para estar em conformidade com a lei.
 
+## Como funciona uma sessão de recarga
+
+Uma sessão de recarga passa por estados bem definidos, monitoráveis em tempo real pelo registrador 10017 do protocolo Modbus TCP do HCA G2:
+
+1. **Ocioso sem plugue (estado 0):** o carregador está disponível e aguarda conexão.
+2. **Plugue conectado (estado 1):** o veículo foi conectado fisicamente, mas a sessão ainda não iniciou.
+3. **Handshaking (estado 2):** o carregador e o veículo trocam informações sobre capacidade de carga e autenticam o usuário (por RFID, app ou início automático).
+4. **Carregando (estado 3):** a energia começa a fluir. O carregador registra em tempo real a potência entregue (kW), a corrente e tensão por fase e a energia acumulada na sessão (kWh).
+5. **Sessão concluída (estado 4):** o veículo atingiu a carga completa ou o usuário encerrou manualmente. O carregador registra o horário de fim, a energia total entregue e a leitura final do medidor MID.
+
+Durante esse fluxo, os principais dados gerados são:
+
+| Dado | Registrador Modbus | Descrição |
+|---|---|---|
+| Horário de início | 10158 a 10160 | Ano/mês, dia/hora, minuto/segundo |
+| Horário de fim | 10162 a 10164 | Ano/mês, dia/hora, minuto/segundo |
+| Energia entregue na sessão | 10016 | kWh (ganho 10) |
+| Leitura MID antes | 10170 | kWh com precisão de 0,01 |
+| Leitura MID depois | 10172 | kWh com precisão de 0,01 |
+| Duração total | 10166 | Segundos |
+| Modo de início | 10076 | RFID, app, automático, etc. |
+
+A diferença entre os registradores 10170 e 10172 (medidor MID) é a base mais confiável para faturamento, pois tem rastreabilidade metrológica. O registrador 10016 serve para monitoramento em tempo real durante a sessão.
+
+## Modelos de negócio para recarga compartilhada
+
+Existem diferentes formas de estruturar a cobrança em infraestruturas compartilhadas. Cada modelo tem implicações distintas para o gestor e para o usuário:
+
+**Recarga gratuita:** o custo da energia é absorvido pelo condomínio ou empresa e dividido entre todos os condôminos ou funcionários, independente de quem carregou. É o modelo mais simples de operar, mas gera subsídio cruzado e tende a ser abandonado à medida que a frota cresce.
+
+**Cobrança por kWh:** o usuário paga pelo volume exato de energia consumida na sessão. É o modelo mais justo e transparente, mas exige medição individual confiável — o que o medidor MID do HCA G2 viabiliza. É o modelo adotado pelo EV ChargeOps.
+
+**Cobrança por tempo:** o usuário paga pela duração da sessão, independente da energia entregue. É mais simples de implementar, mas penaliza veículos com maior eficiência de carga e não reflete o custo real da energia.
+
+**Assinatura mensal:** o usuário paga uma taxa fixa por mês que garante um volume de recargas ou um número de horas de uso. Facilita o planejamento financeiro do usuário, mas pode gerar ociosidade ou sobreuso dependendo do perfil de cada um.
+
+**Rateio condominial:** o custo total da energia consumida por todos os carregadores no mês é dividido proporcionalmente entre os usuários, com base no número de sessões ou na energia individual de cada um. Exige controle de uso por sessão, mas não necessariamente um medidor MID por carregador.
+
+No contexto do EV ChargeOps, o modelo adotado é a **cobrança por kWh**, por ser o mais alinhado à exigência da Lei 18.403/2026 (medição individual) e o que oferece maior transparência para o usuário e menor risco de conflito para o gestor do condomínio.
+
 ## Análise de mercado: o que já existe
 
 Pesquisamos as principais soluções disponíveis para entender o que o mercado oferece e onde estão as lacunas, especialmente para o contexto brasileiro.
