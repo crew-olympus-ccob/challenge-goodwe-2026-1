@@ -92,13 +92,13 @@ No contexto do EV ChargeOps, o modelo adotado é a **cobrança por kWh**, por se
 
 Pesquisamos as principais soluções disponíveis para entender o que o mercado oferece e onde estão as lacunas, especialmente para o contexto brasileiro.
 
-**Wallbox Pulsar Plus (Espanha):** carregador AC de 7,4 a 22 kW com balanceamento dinâmico de carga entre múltiplos pontos (Power Sharing), integração com energia solar e suporte ao protocolo OCPP. Não tem homologação ANATEL, o que complica a regularização no Brasil.
+**Wallbox Pulsar Plus (Espanha):** carregador AC de 7,4 a 22 kW com balanceamento dinâmico de carga entre múltiplos pontos (Power Sharing), integração com energia solar e suporte ao protocolo OCPP. Não tem homologação ANATEL, o que complica a regularização no Brasil. O modelo de negócio é venda de hardware com assinatura opcional da plataforma myWallbox para gestão remota.
 
-**Zaptec Go (Noruega):** 22 kW, com algoritmo de distribuição de carga entre dezenas de carregadores simultâneos e integração com sistemas de automação predial. Também sem homologação para o Brasil.
+**Zaptec Go (Noruega):** 22 kW, com algoritmo de distribuição de carga entre dezenas de carregadores simultâneos e integração com sistemas de automação predial. Também sem homologação para o Brasil. O modelo de negócio é venda de hardware com plataforma de gestão (Zaptec Portal) incluída, cobrada por ponto ativo.
 
-**ChargePoint (EUA):** plataforma SaaS consolidada para gestão corporativa de frotas, com autenticação por RFID ou app e relatórios detalhados. Não tem hardware distribuído no Brasil.
+**ChargePoint (EUA):** plataforma SaaS consolidada para gestão corporativa de frotas, com autenticação por RFID ou app e relatórios detalhados. Não tem hardware distribuído no Brasil. O modelo de negócio é SaaS: o hardware é vendido ou alugado e a plataforma de gestão é cobrada por assinatura mensal por ponto.
 
-**Neocharge (Brasil):** é o principal concorrente nacional, com wallboxes de 3,7 a 22 kW e plataforma de gestão própria. Tem suporte técnico local, mas não tem integração nativa com sistemas fotovoltaicos e não expõe protocolo Modbus para integrações externas.
+**Neocharge (Brasil):** é o principal concorrente nacional, com wallboxes de 3,7 a 22 kW e plataforma de gestão própria. Tem suporte técnico local, mas não tem integração nativa com sistemas fotovoltaicos e não expõe protocolo Modbus para integrações externas. O modelo de negócio é venda de hardware com acesso à plataforma incluso, sem cobrança de assinatura separada.
 
 **GoodWe HCA G2 + EV ChargeOps:** é a única combinação com homologação ANATEL (nº 06795-24-02673), integração direta com inversores fotovoltaicos GoodWe via RS485, controle dinâmico de carga e protocolo Modbus TCP aberto para que a plataforma acesse os dados de sessão.
 
@@ -219,7 +219,7 @@ O SEMS+ (semsplus.goodwe.com) é a plataforma de nuvem da GoodWe onde ficam os d
 |---|---|---|---|
 | EV Charger | Carregador EV | 57000HPA247L0002 | Ocioso |
 | ES LD | Inversor de armazenamento (7,5 kW) | 97500NAP25BL0008 | Offline |
-| 53600ERN238W0001 | Inversor de armazenamento (3,6 kW) | 53600ERN238W0001 | Offline |
+| GW3600 | Inversor de armazenamento (3,6 kW) | 53600ERN238W0001 | Offline |
 | Dongle 14 / Dongle 16 | Dongles de comunicação | — | Offline |
 | Third-party Inverter 1 | Inversor de terceiros | VD1009097500NAP25BL0008 | Offline |
 
@@ -420,6 +420,16 @@ O banco de dados do EV ChargeOps é relacional (PostgreSQL) e organizado em sete
 | codigo_rfid | VARCHAR(50) | Código lido pelo carregador |
 | ativo | BOOLEAN | Se o cartão está habilitado |
 
+`veiculos`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| usuario_id | UUID | FK → usuarios |
+| placa | VARCHAR(10) | Placa do veículo |
+| marca | VARCHAR(50) | Fabricante (ex: BYD, Volvo) |
+| modelo | VARCHAR(50) | Modelo (ex: Dolphin, XC40) |
+| capacidade_bateria_kwh | DECIMAL(6,2) | Capacidade nominal da bateria |
+
 `carregadores`
 | Coluna | Tipo | Descrição |
 |---|---|---|
@@ -479,6 +489,7 @@ O banco de dados do EV ChargeOps é relacional (PostgreSQL) e organizado em sete
 
 - `usuarios` 1:N `cartoes_rfid` — um usuário pode ter mais de um cartão
 - `usuarios` 1:N `faturas` — um usuário tem uma fatura por mês
+- `usuarios` 1:N `veiculos` — um usuário pode ter mais de um veículo cadastrado
 - `cartoes_rfid` 1:N `sessoes` — cada sessão é iniciada por um cartão
 - `carregadores` 1:N `sessoes` — cada carregador registra várias sessões
 - `faturas` 1:N `itens_fatura` — cada fatura detalha as sessões do período
@@ -515,7 +526,7 @@ INSERT INTO faturas VALUES (
 ## Plano para a Sprint 02
 
 * **Hardware & Comunicação:** Estruturação do ambiente de testes Modbus TCP para leitura simulada dos registradores do GoodWe HCA G2.
-* **Backend & Banco de Dados:** Modelagem física e criação do schema do banco PostgreSQL contendo as tabelas do Core System. Desenvolvimento dos endpoints REST iniciais para ingestão de sessões.
+* **Backend & Banco de Dados:** Implementação física do schema PostgreSQL e criação do ambiente de banco de dados de desenvolvimento. Desenvolvimento dos endpoints REST iniciais para ingestão de sessões.
 * **Inteligência Artificial:** Desenvolvimento do protótipo da IA 1 (Média Temporal) em Python para modelagem preditiva de carga baseada em dados históricos sintéticos.
 * **Frontend:** Criação das telas iniciais do fluxo do usuário (histórico e faturas) utilizando o framework escolhido para a interface.
 
