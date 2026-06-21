@@ -322,6 +322,40 @@ O EV ChargeOps adota uma estrutura em camadas bem definidas, garantindo o desaco
 
 ---
 
+## Fluxo de dados: da sessão à fatura
+
+O caminho completo percorrido pelos dados desde o início de uma recarga até a geração da fatura passa por cinco etapas:
+
+**1. Captura na borda (HCA G2)**
+
+Quando o usuário aproxima o cartão RFID do carregador, o HCA G2 autentica a sessão e começa a registrar dados via Modbus TCP. Durante a sessão, os registradores atualizam em tempo real: potência entregue (10015), energia acumulada (10016) e status (10017). Ao encerrar, o carregador registra o horário de fim (10162–10164), a leitura do medidor MID antes (10170) e depois (10172) da sessão.
+
+**2. Coleta pelo backend**
+
+O backend coleta esses dados por duas vias complementares: via Modbus TCP direto na rede local (leitura dos registradores) e via GoodWe Open API (`POST /api/v1/device/queryDeviceTelemetry` no servidor `hk-gateway.semsportal.com`), que retorna os campos `currentChargeE`, `currentChargeTime` e `vehConnectStatus` para o dispositivo `deviceType: 5`. Os dados coletados são persistidos como um registro de sessão no PostgreSQL.
+
+**3. Processamento pelo motor de rateio**
+
+Com a sessão encerrada e persistida, o motor de rateio calcula o custo:
+
+- Energia cobrada = leitura MID depois − leitura MID antes (base metrológica) ou `currentChargeE` via API (fallback)
+- Custo da energia = energia cobrada × tarifa vigente (R$/kWh)
+- Custo de ociosidade = tempo com veículo 100% carregado mas ainda conectado × taxa de penalidade (R$/h)
+- Custo total = custo da energia + custo de ociosidade
+
+O resultado é vinculado ao cartão RFID utilizado, que identifica o usuário responsável.
+
+**4. Análise pela IA**
+
+Após o processamento, os dois modelos de IA são acionados:
+
+- **IA 1 (previsão de demanda):** incorpora a sessão ao histórico e recalcula a previsão de pico para os próximos dias, ajustando sugestões de horário ao usuário.
+- **IA 2 (detecção de anomalias):** verifica se a sessão apresenta padrões atípicos — consumo zero em sessão longa, corrente fora da faixa esperada para o veículo, duração incompatível com a energia entregue. Se detectar anomalia, gera um alerta vinculado à sessão.
+
+**5. Geração e exibição da fatura**
+
+No fechamento do ciclo mensal, o backend consolida todas as sessões do usuário no período, soma os custos e gera a fatura. O usuário visualiza no app/portal: data e duração de cada sessão, energia consumida (kWh), valor unitário e total. O administrador do condomínio visualiza o relatório consolidado com o consumo de todos os usuários e o total geral do período.
+
 ## Modelo de Rateio (Motor de Rateio)
 
 O motor de rateio é o módulo responsável pelo cálculo de cobrança individualizada, estruturado para incentivar o uso eficiente da infraestrutura compartilhada e mitigar conflitos em vagas comuns (como o bloqueio de carregadores por veículos já carregados).
@@ -339,6 +373,20 @@ $$C_{ociosidade} = t_{ocioso} \times T_{ociosa}$$
 
 ---
 
+### Casos excepcionais no modelo de rateio
+
+**Sessão interrompida (estado 10)**
+
+Ocorre quando a conexão é encerrada antes da conclusão normal — queda de energia, desconexão manual do cabo ou falha no carregador. O sistema registra o estado 10 no registrador 10017 e usa a diferença entre a leitura MID no momento da interrupção e a leitura inicial como base de cobrança. Se a diferença for zero (nenhuma energia foi entregue), a sessão é registrada mas não gera cobrança. Exemplo real identificado na planta LAB FIAP: sessão de 37 minutos com 0,00 kWh — registrada, sem valor a cobrar.
+
+**Usuário que não carregou no mês**
+
+Se nenhuma sessão for registrada para um determinado cartão RFID no período de faturamento, nenhuma fatura é gerada para aquele usuário. Não há taxa mínima de disponibilidade no modelo padrão. O registro de ausência de uso fica no histórico para fins estatísticos e de previsão pela IA.
+
+**Dois veículos da mesma unidade condominial**
+
+Cada sessão é vinculada ao cartão RFID utilizado, não à unidade. Se dois moradores do mesmo apartamento têm cartões distintos, cada um acumula suas sessões de forma independente e recebe fatura separada. Se o condomínio optar por consolidar o débito por unidade, o backend agrega as faturas dos cartões associados à mesma unidade antes do fechamento. A configuração de consolidação é definida pelo administrador no painel de gestão.
+
 ## Papel da IA na Solução
 
 A inteligência do sistema opera na camada analítica por meio de dois componentes focados em otimização operacional e segurança:
@@ -347,6 +395,122 @@ A inteligência do sistema opera na camada analítica por meio de dois component
 * **IA 2 — Detecção de Anomalias:** Baseada em regras heurísticas de consumo ou algoritmos de isolamento (*Isolation Forest*), atua na varredura de comportamento para identificar padrões de consumo irregular (desvios abruptos de corrente/tensão), detectar falhas mecânicas/elétricas do hardware, mitigar uso indevido (fraudes de autenticação) e sinalizar veículos ociosos travando a vaga.
 
 ---
+
+## Esquema do banco de dados
+
+O banco de dados do EV ChargeOps é relacional (PostgreSQL) e organizado em sete entidades principais.
+
+**Entidades e atributos:**
+
+`usuarios`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| nome | VARCHAR(100) | Nome completo |
+| email | VARCHAR(100) | E-mail de acesso |
+| telefone | VARCHAR(20) | Contato |
+| unidade | VARCHAR(20) | Apartamento/sala no condomínio |
+| created_at | TIMESTAMP | Data de cadastro |
+
+`cartoes_rfid`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| usuario_id | UUID | FK → usuarios |
+| codigo_rfid | VARCHAR(50) | Código lido pelo carregador |
+| ativo | BOOLEAN | Se o cartão está habilitado |
+
+`carregadores`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| sn_dispositivo | VARCHAR(50) | Número de série do HCA G2 |
+| modelo | VARCHAR(50) | GW7K, GW11K ou GW22K |
+| potencia_kw | DECIMAL(5,2) | Potência nominal |
+| localizacao | VARCHAR(100) | Vaga ou ponto de instalação |
+
+`sessoes`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| carregador_id | UUID | FK → carregadores |
+| cartao_rfid_id | UUID | FK → cartoes_rfid |
+| usuario_id | UUID | FK → usuarios |
+| inicio | TIMESTAMP | Horário de início |
+| fim | TIMESTAMP | Horário de fim |
+| energia_kwh | DECIMAL(10,4) | Energia entregue na sessão |
+| mid_antes_kwh | DECIMAL(10,4) | Leitura MID antes (reg. 10170) |
+| mid_depois_kwh | DECIMAL(10,4) | Leitura MID depois (reg. 10172) |
+| duracao_seg | INTEGER | Duração total em segundos |
+| estado_final | SMALLINT | 4=concluída, 10=interrompida |
+| anomalia | BOOLEAN | Flag da IA 2 |
+
+`faturas`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| usuario_id | UUID | FK → usuarios |
+| mes_referencia | DATE | Mês/ano de competência |
+| energia_total_kwh | DECIMAL(10,4) | Total consumido no período |
+| valor_energia_brl | DECIMAL(10,2) | Custo da energia |
+| valor_ociosidade_brl | DECIMAL(10,2) | Custo de ociosidade |
+| valor_total_brl | DECIMAL(10,2) | Total a pagar |
+| status | VARCHAR(20) | pendente / pago / contestado |
+
+`itens_fatura`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| fatura_id | UUID | FK → faturas |
+| sessao_id | UUID | FK → sessoes |
+| energia_kwh | DECIMAL(10,4) | Energia desta sessão |
+| valor_brl | DECIMAL(10,2) | Custo desta sessão |
+
+`tarifas`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | UUID | Identificador único |
+| valor_kwh | DECIMAL(6,4) | Tarifa de energia (R$/kWh) |
+| taxa_ociosidade_hora | DECIMAL(6,2) | Penalidade por hora ociosa |
+| vigencia_inicio | DATE | Início da vigência |
+| vigencia_fim | DATE | Fim da vigência (nulo = atual) |
+
+**Relacionamentos:**
+
+- `usuarios` 1:N `cartoes_rfid` — um usuário pode ter mais de um cartão
+- `usuarios` 1:N `faturas` — um usuário tem uma fatura por mês
+- `cartoes_rfid` 1:N `sessoes` — cada sessão é iniciada por um cartão
+- `carregadores` 1:N `sessoes` — cada carregador registra várias sessões
+- `faturas` 1:N `itens_fatura` — cada fatura detalha as sessões do período
+- `sessoes` 1:1 `itens_fatura` — cada sessão gera um item de fatura
+
+**Exemplos de registros simulados:**
+
+```sql
+-- Usuário
+INSERT INTO usuarios VALUES (
+  'a1b2c3d4-...', 'Carlos Mendes', 'carlos@email.com',
+  '11999990000', 'Apto 42', NOW()
+);
+
+-- Cartão RFID
+INSERT INTO cartoes_rfid VALUES (
+  'e5f6g7h8-...', 'a1b2c3d4-...', '57000HPA247L0002', true
+);
+
+-- Sessão concluída
+INSERT INTO sessoes VALUES (
+  'i9j0k1l2-...', 'carregador-uuid', 'e5f6g7h8-...', 'a1b2c3d4-...',
+  '2026-06-19 19:27:28', '2026-06-20 00:22:24',
+  11.49, 340.21, 351.70, 17696, 4, false
+);
+
+-- Fatura de junho
+INSERT INTO faturas VALUES (
+  'm3n4o5p6-...', 'a1b2c3d4-...',
+  '2026-06-01', 26.08, 18.26, 0.00, 18.26, 'pendente'
+);
+```
 
 ## Plano para a Sprint 02
 
