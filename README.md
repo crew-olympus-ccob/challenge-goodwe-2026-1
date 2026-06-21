@@ -202,13 +202,15 @@ Headers: { "X-Goog-FieldMask": "evChargeOptions" }
 
 # Frente 3: Arquitetura e Inteligência
 
-### Diagrama de Arquitetura
+Aprofundamentos escolhidos: B (papel da IA na solução) e C (esquema do banco de dados)
+
+## Diagrama de Arquitetura
 
 O EV ChargeOps adota uma estrutura em camadas bem definidas, garantindo o desacoplamento de responsabilidades desde o hardware em campo até as interfaces de ponta, permitindo manutenção simplificada e robustez no processamento de sessões.
 
 <img width="1172" height="779" alt="image" src="https://github.com/user-attachments/assets/c2c4c7be-ff59-45a2-9e03-d901ef2ead6d" />
 
-### Estrutura e Camadas do Sistema
+## Estrutura e Camadas do Sistema
 
 * **Camada Física (Edge Device):** Centrada no carregador **GoodWe HCA G2**, responsável pela medição de energia (kWh), controle de início/fim de sessão, leitura do status de recarga e autenticação local via cartões RFID.
 * **Camada de Comunicação:** Transmissão dos dados do carregador para o ecossistema backend utilizando o protocolo **Modbus TCP** estruturado sobre a infraestrutura de rede local (Wi-Fi ou LAN/Ethernet).
@@ -221,7 +223,7 @@ O EV ChargeOps adota uma estrutura em camadas bem definidas, garantindo o desaco
 
 ---
 
-### Modelo de Rateio (Motor de Rateio)
+## Modelo de Rateio (Motor de Rateio)
 
 O motor de rateio é o módulo responsável pelo cálculo de cobrança individualizada, estruturado para incentivar o uso eficiente da infraestrutura compartilhada e mitigar conflitos em vagas comuns (como o bloqueio de carregadores por veículos já carregados).
 
@@ -238,7 +240,7 @@ $$C_{ociosidade} = t_{ocioso} \times T_{ociosa}$$
 
 ---
 
-### Papel da IA na Solução
+## Papel da IA na Solução
 
 A inteligência do sistema opera na camada analítica por meio de dois componentes focados em otimização operacional e segurança:
 
@@ -247,7 +249,7 @@ A inteligência do sistema opera na camada analítica por meio de dois component
 
 ---
 
-### Plano para a Sprint 02
+## Plano para a Sprint 02
 
 * **Hardware & Comunicação:** Estruturação do ambiente de testes Modbus TCP para leitura simulada dos registradores do GoodWe HCA G2.
 * **Backend & Banco de Dados:** Modelagem física e criação do schema do banco PostgreSQL contendo as tabelas do Core System. Desenvolvimento dos endpoints REST iniciais para ingestão de sessões.
@@ -256,7 +258,7 @@ A inteligência do sistema opera na camada analítica por meio de dois component
 
 ---
 
-### Links do Projeto
+## Links do Projeto
 
 Utilize os acessos abaixo para visualizar as especificações técnicas, designs e o gerenciamento do projeto:
 
