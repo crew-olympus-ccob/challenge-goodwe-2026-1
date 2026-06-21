@@ -115,7 +115,7 @@ Pesquisamos as principais soluções disponíveis para entender o que o mercado 
 
 # Frente 2: Base Regulatória e Técnica
 
-Aprofundamentos escolhidos: B (documentação da API SEMS da GoodWe) e C (APIs complementares: Open Charge Map e Google Places)
+Aprofundamentos escolhidos: B (exploração do portal SEMS+ e dados disponíveis) e C (APIs complementares: Open Charge Map e Google Places)
 
 ## ANEEL Resolução Normativa 1.000/2021
 
@@ -209,9 +209,68 @@ A comunicação entre a plataforma e o carregador é feita pelo protocolo Modbus
 | 10019 | Plug & Charge (0=desativado, 1=ativado) |
 | 10500 a 10521 | Gerenciamento de cartões RFID |
  
-## Integração com o SEMS+
- 
-O SEMS+ é a plataforma de nuvem da GoodWe onde ficam os dados dos inversores e dos carregadores. A integração com a plataforma utilizará os acessos e a documentação de API fornecidos pela equipe da GoodWe em conjunto com os professores da FIAP ao longo do projeto.
+## Exploração do portal SEMS+ e dados disponíveis
+
+O SEMS+ (semsplus.goodwe.com) é a plataforma de nuvem da GoodWe onde ficam os dados dos inversores e carregadores. A equipe tem acesso via login compartilhado à planta **LAB FIAP Eco Smart Home**, que é o ambiente de laboratório disponibilizado pela FIAP para o projeto. Não há acesso a uma API programática: a exploração é feita diretamente no portal.
+
+**Infraestrutura disponível na planta LAB FIAP:**
+
+| Dispositivo | Modelo | SN | Status |
+|---|---|---|---|
+| EV Charger | Carregador EV | 57000HPA247L0002 | Ocioso |
+| ES LD | Inversor de armazenamento (7,5 kW) | 97500NAP25BL0008 | Offline |
+| 53600ERN238W0001 | Inversor de armazenamento (3,6 kW) | 53600ERN238W0001 | Offline |
+| Dongle 14 / Dongle 16 | Dongles de comunicação | — | Offline |
+| Third-party Inverter 1 | Inversor de terceiros | VD1009097500NAP25BL0008 | Offline |
+
+**Dados disponíveis no painel da planta:**
+
+O portal expõe um dashboard em tempo real com geração de energia (kWh), energia comprada da rede, energia injetada, receita de rede e consumo da carga. O fluxo de energia é representado graficamente com fontes (Solar, Bateria, Rede, Gerador) e destinos (Bateria, Uso da carga, Rede), além de curvas de potência ao longo do dia.
+
+**Dados disponíveis por sessão de carregamento (Registo de carregamento do EV Charger):**
+
+| Campo | Exemplo |
+|---|---|
+| Horário de início | 19/06/2026 19:27:28 |
+| Horário de fim | 20/06/2026 00:22:24 |
+| Duração | 4 Horas 56 Minutos |
+| Energia carregada | 11,49 kWh |
+| Autonomia estimada | 57,45 km |
+| ID do cartão RFID utilizado | 57000HPA247L0002 |
+| Porta de carregamento | 1 |
+
+Esses dados são o que o EV ChargeOps precisará ler para calcular o rateio por usuário. Na planta de laboratório já há sessões registradas, incluindo uma sessão de 37 minutos com 0,00 kWh, que representa um caso de sessão iniciada mas sem carga efetiva, caso relevante para o modelo de rateio.
+
+Durante a pesquisa da Sprint 1, foram identificadas e documentadas as APIs disponíveis para integração programática com a plataforma SEMS.
+
+**GoodWe Open API (oficial — openapi.goodwe.com)**
+
+A GoodWe disponibiliza uma API REST oficial, documentada em `openapi.goodwe.com`, com quatro grupos de endpoints (todos via `POST`):
+
+| Grupo | Endpoints |
+|---|---|
+| Basic Information Query | Query Station Information, Query Device List Under Station, Query Device Attribute Information |
+| Running Data Monitoring | Query Device Real-time Telemetry Data, Query Station Real-time Telemetry Data, Query Device Statistics Data, Query Station Statistics Data |
+| Remote Dispatch Management | Create Control Task, Query Control Result, Create Control Parameter Read Task, Query Control Parameter Read Result |
+| Alarm Detection Management | Query Device Alarms |
+
+O carregador EV é suportado como `deviceType: 5`. Os campos de telemetria disponíveis para o EV Charger são:
+
+| Campo | Tipo | Descrição | Unidade |
+|---|---|---|---|
+| vehConnectStatus | integer | Status da conexão: 0=desconectado, 1=plugado sem carga, 2=plugado e carregando | — |
+| currentChargeE | double | Energia carregada na sessão atual | kWh |
+| currentChargeTime | integer | Duração da sessão atual | s |
+| evChargerCharge | double | Energia acumulada total do carregador | kWh |
+| activePower | double | Potência de carregamento em tempo real | kW |
+| voltage1/2/3 | double | Tensão por fase | V |
+| current1/2/3 | double | Corrente por fase | A |
+
+O campo `currentChargeE` é o dado central para o cálculo de rateio por sessão. O servidor para o Brasil é o International Server: `https://hk-gateway.semsportal.com`. O acesso à Open API requer conta organizacional no SEMS e deve ser solicitado à equipe GoodWe (academy@goodwe.com).
+
+**API não oficial do SEMS Portal (comunidade)**
+
+Paralelamente, a API não documentada do `semsportal.com` é real e ativamente utilizada — a integração open source [goodwe-sems-home-assistant](https://github.com/timsoethout/goodwe-sems-home-assistant) consome essa API via `POST /api/v1/Common/CrossLogin` para autenticação e `POST /api/v1/PowerStation/GetMonitorDetailByPowerstationId` para dados da planta. Suporta conta visitante read-only.
 
 ## APIs complementares
 
@@ -319,6 +378,11 @@ Utilize os acessos abaixo para visualizar as especificações técnicas, designs
 - GoodWe. GW_HCA-G2 Manual do Usuário (PT). Documento técnico oficial, 2024.
 - GoodWe. Mapa MODBUS HCA G2. Documento técnico oficial, 2024.
 - GoodWe. SEMS+ Portal. Disponível em: https://semsplus.goodwe.com
+- GoodWe. SEMS Plus 2 APP User Manual v1.0. Documento técnico oficial, novembro de 2025.
+- GoodWe. API Introduction (SA-E-20221031-001). Documento técnico oficial, 2022.
+- GoodWe. Developer Platform (OpenAPI). Disponível em: https://openapi.goodwe.com
+- Karunanayake, B. Accessing the GoodWe SEMS Portal API: A Comprehensive Guide. Medium, 2023. Disponível em: https://binodmx.medium.com/accessing-the-goodwe-sems-portal-api-a-comprehensive-guide-296e0431c285
+- Soethout, T. goodwe-sems-home-assistant: integração open source da API SEMS com Home Assistant. GitHub, 2026. Disponível em: https://github.com/timsoethout/goodwe-sems-home-assistant
 - NeoCharge. Carregador para carro elétrico em prédios e condomínios. Disponível em: https://www.neocharge.com.br/tudo-sobre/carregador-carro-eletrico-predio-condominio-instalacao
 - Open Charge Alliance. Open Charge Point Protocol (OCPP). Disponível em: https://openchargealliance.org/protocols/open-charge-point-protocol/
 - Virta Global. OCPI protocol explained. Disponível em: https://www.virta.global/blog/ocpi-protocol-explained-the-backbone-of-ev-charging-interoperability
